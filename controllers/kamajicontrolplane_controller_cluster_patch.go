@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -19,6 +20,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/clastix/cluster-api-control-plane-provider-kamaji/api/v1alpha1"
+)
+
+const (
+	openStackClusterKind = "OpenStackCluster"
+	capoBetaAPIPrefix    = "infrastructure.cluster.x-k8s.io/v1beta"
 )
 
 func (r *KamajiControlPlaneReconciler) controlPlaneEndpoint(controlPlane *v1alpha1.KamajiControlPlane, statusEndpoint string) (string, int64, error) {
@@ -106,6 +112,9 @@ func (r *KamajiControlPlaneReconciler) patchCluster(ctx context.Context, cluster
 	case "NutanixCluster":
 		return r.patchGenericCluster(ctx, cluster, endpoint, port, true)
 	case "OpenStackCluster":
+		if r.isBetaOpenStackCluster(cluster.Spec.InfrastructureRef) {
+			return r.patchGenericCluster(ctx, cluster, endpoint, port, false)
+		}
 		return r.patchOpenStackCluster(ctx, cluster, endpoint, port)
 	case "PacketCluster":
 		return r.patchGenericCluster(ctx, cluster, endpoint, port, true)
@@ -122,6 +131,13 @@ func (r *KamajiControlPlaneReconciler) patchCluster(ctx context.Context, cluster
 
 		return errors.New("unsupported infrastructure provider")
 	}
+}
+
+// check if OpenstackCluster is using v1beta api version
+func (r *KamajiControlPlaneReconciler) isBetaOpenStackCluster(ref *corev1.ObjectReference) bool {
+	return ref != nil &&
+		ref.Kind == openStackClusterKind &&
+		strings.HasPrefix(ref.APIVersion, capoBetaAPIPrefix)
 }
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=proxmoxclusters;vsphereclusters;tinkerbellclusters,verbs=get;list;watch
